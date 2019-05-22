@@ -1,4 +1,6 @@
 # Kaggle-Store-Item-Demand-Forecasting-Challenge
 Store Item Demand Forecasting Challenge on Kaggle
 
-This is a test commit. THis is a second test.adadad
+This repo contains the code. Only late submission and for coding and time series forecast practice only.
+
+

@@ -1,0 +1,256 @@
+---
+title: "EDA Demand Forecasting Kaggle"
+author: "Sebastian Sternberg"
+date: "21 5 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+sessionInfo()
+
+```
+
+Packages:
+
+```{r}
+
+rm(list = ls())
+
+require(ggplot2)
+require(ggthemes)
+
+#set theme for ggplot
+
+theme_set(theme_tufte())
+
+require(magrittr)
+require(dplyr)
+
+
+```
+
+
+
+```{r}
+source("~/Dropbox/Kaggle/demand_forecasting/Code/helpful_functions.R")
+
+```
+
+
+# Load the data
+
+
+```{r}
+
+train_df <- read.csv("~/Dropbox/Kaggle/demand_forecasting/Data/train.csv")
+test_df <- read.csv("~/Dropbox/Kaggle/demand_forecasting/Data/test.csv")
+
+head(train_df)
+head(test_df)
+
+```
+
+
+# Explore the data
+
+item is the item id. sales - Number of items sold at a particular store on a particular date. store - Store ID.
+
+
+```{r}
+
+str(train_df)
+
+train_df$store <- as.factor(train_df$store )
+train_df$item <- as.factor(train_df$item )
+
+#do the same for test_df
+
+test_df$store <- as.factor(test_df$store )
+test_df$item <- as.factor(test_df$item )
+
+```
+
+
+
+```{r}
+
+ggplot(data = train_df) +
+  geom_bar(mapping = aes(x = store))
+
+```
+
+each store exactly the same amount of observations. 
+
+
+```{r}
+
+ggplot(data = train_df) +
+  geom_bar(mapping = aes(x = item))
+
+
+
+
+
+```
+
+That fits the data description: sales for 50 different items at 10 different stores.
+
+
+```{r}
+
+ggplot(data = train_df, aes(x=sales)) + 
+  geom_density() + theme_tufte()
+
+```
+
+See how the sales vary over the different stores:
+
+```{r}
+
+ggplot(data = train_df, mapping = aes(x = store, y = sales)) +
+  geom_boxplot() + theme_tufte()
+
+#reordered version:
+
+library(forcats)
+ggplot(train_df, aes(x = fct_reorder(store, sales, fun = median, .desc =TRUE), y = sales)) + 
+        geom_boxplot() + xlab("Store") 
+
+
+#get the group means
+train_df %>%
+  group_by(store) %>%
+  summarise(sales = mean(sales)) %>%
+  arrange(sales)
+
+#lookt at density over stores:
+ggplot(train_df) + geom_density(aes(x = sales)) + facet_wrap(~store) + theme_tufte()
+
+```
+
+Store 2 and 8 have the most sales (67 and 64) overall, and store 7 and 6 the least sales.
+
+
+
+See how the sales vary over the different items:
+
+```{r}
+
+ggplot(train_df, aes(x = fct_reorder(item, sales, fun = median, .desc =TRUE), y = sales)) + 
+        geom_boxplot() + xlab("Items")
+
+#get the group means
+train_df %>%
+  group_by(item) %>%
+  summarise(sales = mean(sales)) %>%
+  arrange(item)
+
+#lookt at density over stores:
+ggplot(train_df) + geom_density(aes(x = sales)) + facet_wrap(~item) + theme_tufte()
+```
+
+Item 15, 28, 13, 18 are the best selling items overall
+
+
+Check Nas:
+
+```{r}
+
+plot_missing(train_df)
+
+```
+
+
+# Exploring the time dimension:
+
+```{r}
+require(zoo)
+require(lubridate)
+
+# Extraction of Year and Month of Year :
+train_df$Year <- year(train_df$date)        #returns the year from date i.e. 2013, 2014 etc.
+train_df$MonthYear <- as.yearmon(train_df$date)
+
+#aggregate the sales per month year
+
+train_df_monthyear <- train_df %>% 
+  group_by(MonthYear) %>%
+  summarise(sales_monthyear_mean = mean(sales))
+
+
+head(train_df_monthyear)
+
+#plot time series by month and year
+library(scales)
+
+ggplot(train_df_monthyear, aes(x = as.POSIXct(MonthYear), y = sales_monthyear_mean)) + 
+  geom_line() + 
+  stat_smooth(
+  method = "loess"
+  ) + 
+  scale_x_datetime(labels = date_format("%Y-%m"), 
+                   breaks = date_breaks("months")) + 
+  theme(axis.text.x = element_text(angle = 45))
+
+
+```
+
+
+```{r}
+
+train_df_monthyear$rate <- c(0, 100*diff(train_df_monthyear$sales_monthyear_mean)/train_df_monthyear[-nrow(train_df_monthyear),]$sales_monthyear_mean)
+
+```
+
+
+
+# A very simply OLS baseline
+
+
+```{r}
+
+summary(m1_lm <- lm(sales ~ store + item, data = train_df))
+
+predict_lm <- predict(m1_lm, test_df)
+
+df_prediction <- cbind.data.frame(id = test_df$id, sales = predict_lm)
+
+write.csv(df_prediction, file = "sample_submission.csv", row.names = F)
+
+```
+
+The simple OLS achieves a score of 48.78430 on the submission file.
+
+
+# Start Forecasting with Prophet (from Facebook)
+
+
+
+prepare the data: The ds column should be YYYY-MM-DD for a date, or YYYY-MM-DD HH:MM:SS for a timestamp.
+
+```{r}
+library(prophet)
+require(tibble)
+
+train_df_prophet <- train_df %>% filter(Year < 2014) %>% 
+  select(ds = date, store, item, y = sales)
+#rename date to ds. the format is already the necessary one
+
+#subset for testing only one year:
+
+m <- prophet(train_df_prophet)
+
+future <- make_future_dataframe(m, periods = 365)
+forecast <- predict(m, future)
+
+plot(m, forecast)
+```
+
+
+
+
+
+
+

@@ -1,0 +1,255 @@
+---
+title: "Arima Forecasting"
+author: "Sebastian Sternberg"
+date: "22 5 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+Packages:
+
+```{r}
+
+rm(list = ls())
+
+require(ggplot2)
+require(ggthemes)
+
+#set theme for ggplot
+
+theme_set(theme_tufte())
+
+require(magrittr)
+require(dplyr)
+
+
+```
+
+
+
+```{r}
+source("~/Dropbox/Kaggle/demand_forecasting/Code/helpful_functions.R")
+
+```
+
+
+# Load the data
+
+
+```{r}
+
+train_df <- read.csv("~/Dropbox/Kaggle/demand_forecasting/Data/train.csv")
+test_df <- read.csv("~/Dropbox/Kaggle/demand_forecasting/Data/test.csv")
+
+head(train_df)
+head(test_df)
+
+```
+
+
+# Explore the data
+
+item is the item id. sales - Number of items sold at a particular store on a particular date. store - Store ID.
+
+
+```{r}
+
+str(train_df)
+
+train_df$store <- as.factor(train_df$store )
+train_df$item <- as.factor(train_df$item )
+
+#do the same for test_df
+
+test_df$store <- as.factor(test_df$store )
+test_df$item <- as.factor(test_df$item )
+
+```
+
+## Naive Benchmark: use the same values than of the year before:
+
+```{r}
+
+
+
+```
+
+
+
+## Arima forecasting
+
+ARIMA stands for auto-regressive integrated moving average and is specified by these three order parameters: ($p$, $d$, $d$). 
+
+```{r}
+
+library('forecast')
+library('tseries')
+
+
+train_df$date <- as.Date(train_df$date)
+
+##aggregate sales by date
+
+train_df_plot <- aggregate(sales ~ date, train_df, mean)
+
+
+ggplot(train_df_plot, aes(date, sales)) + geom_line() + scale_x_date('month')  + ylab(" ") +
+            xlab("")
+
+
+#clean the time serioes
+
+count_ts <- ts(train_df_plot[, c('sales')])
+
+train_df_plot$clean_sales = tsclean(count_ts)
+
+ggplot() +
+  geom_line(data = train_df_plot, aes(x = date, y = clean_sales)) + ylab('Cleaned Bicycle Count')
+
+
+```
+
+
+```{r}
+train_df_plot$sales_ma <- ma(train_df_plot$clean_sales, order=7) # using the clean count with no outliers
+train_df_plot$sales_ma30 <- ma(train_df_plot$clean_sales, order=30)
+
+
+ggplot() +
+  geom_line(data = train_df_plot, aes(x = date, y = clean_sales, colour = "Counts")) +
+  geom_line(data = train_df_plot, aes(x = date, y = sales_ma,   colour = "Weekly Moving Average"))  +
+  geom_line(data = train_df_plot, aes(x = date, y = sales_ma30, colour = "Monthly Moving Average"))  +
+  ylab('Bicycle Count')
+
+```
+
+
+## Decompose the data into blocks
+
+calculate seasonal component of the data using stl(). STL is a flexible function for decomposing and forecasting the series. It calculates the seasonal component of the series using smoothing, and adjusts the original series by subtracting seasonality in two simple lines:
+
+
+```{r}
+
+count_ma <- ts(na.omit(train_df_plot$sales_ma), frequency=30)
+decomp <- stl(count_ma, s.window="periodic")
+deseasonal_cnt <- seasadj(decomp)
+plot(decomp)
+
+
+#test for stationarity:
+
+adf.test(count_ma, alternative = "stationary")
+
+```
+
+
+## Autocorrelations and Choosing Model Order
+
+
+```{r}
+Acf(count_ma, main='')
+
+Pacf(count_ma, main='')
+
+
+count_d1 = diff(deseasonal_cnt, differences = 1)
+plot(count_d1)
+adf.test(count_d1, alternative = "stationary")
+
+```
+
+
+```{r}
+
+Acf(count_d1, main='ACF for Differenced Series')
+Pacf(count_d1, main='PACF for Differenced Series')
+
+```
+
+
+## Fit the model:
+
+
+```{r}
+
+auto.arima(deseasonal_cnt, seasonal=FALSE)
+
+
+
+
+```
+
+## Evaluate and iterate
+
+```{r}
+
+fit<-auto.arima(deseasonal_cnt, seasonal=FALSE)
+tsdisplay(residuals(fit), lag.max=45, main='(4,1,5) Model Residuals')
+
+```
+
+
+```{r}
+
+fit2 <- arima(deseasonal_cnt, order=c(4,1,7))
+tsdisplay(residuals(fit), lag.max=15)
+
+
+fcast <- forecast(fit2, h=30)
+plot(fcast)
+
+
+###using holdout set:
+
+hold <- window(ts(deseasonal_cnt), start=1454)
+
+fit_no_holdout = auto.arima(ts(deseasonal_cnt[-c((length(deseasonal_cnt)- 30) :length(deseasonal_cnt))]))
+
+fcast_no_holdout <- forecast(fit_no_holdout,h=30)
+plot(fcast_no_holdout, main=" ")
+lines(ts(deseasonal_cnt))
+
+
+```
+
+
+
+## Using seasonality:
+
+
+```{r}
+
+fit_w_seasonality = auto.arima(deseasonal_cnt, seasonal=TRUE)
+fit_w_seasonality
+
+seas_fcast <- forecast(fit_w_seasonality, h=30)
+plot(seas_fcast)
+
+tsdisplay(residuals(seas_fcast), lag.max=45)
+
+
+fcarima <- auto.arima(train_df_plot[, c("sales")])
+fcarima %>% forecast(h = 90) %>% autoplot()
+checkresiduals(fcarima)
+```
+
+## Make the predictions
+
+```{r}
+
+
+
+
+```
+
+
+
+
+
+

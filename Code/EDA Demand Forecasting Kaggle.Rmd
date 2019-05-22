@@ -89,10 +89,6 @@ each store exactly the same amount of observations.
 ggplot(data = train_df) +
   geom_bar(mapping = aes(x = item))
 
-
-
-
-
 ```
 
 That fits the data description: sales for 50 different items at 10 different stores.
@@ -246,7 +242,51 @@ future <- make_future_dataframe(m, periods = 365)
 forecast <- predict(m, future)
 
 plot(m, forecast)
+
+
+stats=data.frame(y=log1p(train_sample$sales)
+                 ,ds=train_sample$date)
+stats=aggregate(stats$y,by=list(stats$ds),FUN=sum)
+head(stats)
+colnames(stats)<- c("ds","y")
+
+model_prophet = prophet(stats)
+summary(model_prophet)
+future = make_future_dataframe(model_prophet, periods = 90)
+forecast = predict(model_prophet, future)
+plot(model_prophet, forecast)
+prophet_plot_components(model_prophet, forecast)
+
+
 ```
+
+
+## Neural Nets Time Series Forecasting
+
+
+```{r}
+require(keras)
+
+
+```
+
+First we start with a very simple and naive RNN. 
+
+```{r}
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
 
 
 

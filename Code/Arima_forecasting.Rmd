@@ -71,15 +71,6 @@ test_df$item <- as.factor(test_df$item )
 
 ```
 
-## Naive Benchmark: use the same values than of the year before:
-
-```{r}
-
-
-
-```
-
-
 
 ## Arima forecasting
 
@@ -237,16 +228,86 @@ tsdisplay(residuals(seas_fcast), lag.max=45)
 fcarima <- auto.arima(train_df_plot[, c("sales")])
 fcarima %>% forecast(h = 90) %>% autoplot()
 checkresiduals(fcarima)
+
+seas_fcast <- forecast(fcarima, h=90)
+
 ```
 
-## Make the predictions
+## Now make an individual model for all the different stores
 
 ```{r}
 
+train_df_reshaped <- train_df %>% reshape(.,  idvar =c('store', 'item'), direction = 'wide', timevar = 'date')
 
-
+head(train_df_reshaped)
+tail(train_df_reshaped)
 
 ```
+
+For each store, we have now for each item them sales per day. 
+
+Write a function so that we can apply autoarima for each of the stores and items separately. Thus, we run 500 time series models. 
+
+
+```{r}
+        m1=  auto.arima((log1p(train_df_reshaped[1, 3:1828])),max.p = 15, max.q = 15, max.P = 2, max.Q = 2, max.order = 5, max.d = 1, max.D = 1, seasonal=TRUE)
+
+bla <- (log1p(train_df_reshaped[1, 3:10]))
+
+ auto.arima(log1p(train_df_reshaped[1, 3:ncol(train_df_reshaped)]))
+#log1p(train_df_reshaped[1, 3:ncol(train_df_reshaped)])
+bla <- log1p(train_df_reshaped[1, 3:ncol(train_df_reshaped)]) %>% as.vector()
+
+sum(is.numeric(bla))
+
+dim(train_df_reshaped)
+some_function <- function(x){
+        m1 <-  auto.arima((log1p(x[3:ncol(train_df_reshaped)])), 
+                          max.p = 15, 
+                          max.q = 15, 
+                          max.P = 2, 
+                          max.Q = 2, 
+                          max.order = 5, 
+                          max.d = 1, 
+                          max.D = 1, 
+                          seasonal=TRUE)
+        f1 <- forecast(m1,h=90)
+        tmp <- as.data.frame(f1)
+        names(tmp)=c("Forecast","Lo_80","Hi_80","Lo_95","Hi_95")
+        tmp['store'] = x['store']
+        tmp['item']= x['item']
+        head(tmp)
+        return(tmp)
+}
+res1= apply(train_df_reshaped,1,some_function)
+
+print("--- done ")
+res2 = reduce(res1,bind_rows)
+subm = read.csv("../input/sample_submission.csv")
+res3 = cbind(subm,res2)
+names(res3) = c("id","Forecast" ,"sales", "Lo_80",    "Hi_80",    "Lo_95"    ,"Hi_95" ,"store"   , "item")
+res3$sales = expm1(res3$sales)
+res5 = res3 %>% select(id,sales)
+write.csv(res5,"auto_arima_log.csv",row.names=FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
